@@ -1,0 +1,61 @@
+name: Upstream Sync
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"  # 每 6 小时同步一次
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync_latest_from_upstream:
+    name: Sync latest commits from upstream repo
+    runs-on: ubuntu-latest
+    if: ${{ github.event.repository.fork }}
+
+    steps:
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set Git identity
+        run: |
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+
+      - name: Add upstream and fetch
+        run: |
+          git remote add upstream https://github.com/SzeMeng76/LunaTV.git
+          git fetch upstream main
+
+      - name: Backup local .github/workflows
+        run: |
+          mkdir -p workflows_backup
+          cp -r .github/workflows workflows_backup/
+
+      - name: Merge upstream into main
+        run: |
+          git checkout main
+          git merge upstream/main --allow-unrelated-histories --no-edit || true
+
+      - name: Restore .github/workflows
+        run: |
+          rm -rf .github/workflows
+          cp -r workflows_backup/ .github/workflows
+
+      - name: Push changes using PAT
+        env:
+          TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          git push https://x-access-token:${TOKEN}@github.com/${{ github.repository }} main
+
+      - name: Delete workflow runs
+        uses: Mattraks/delete-workflow-runs@main
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+          repository: ${{ github.repository }}
+          retain_days: 0
+          keep_minimum_runs: 2
