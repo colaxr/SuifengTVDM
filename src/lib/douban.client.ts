@@ -371,6 +371,46 @@ export async function getDoubanRecommends(
   }
 }
 
+/**
+ * 获取豆瓣影片详细信息
+ */
+export async function getDoubanDetails(id: string): Promise<{
+  code: number;
+  message: string;
+  data?: {
+    id: string;
+    title: string;
+    poster: string;
+    rate: string;
+    year: string;
+    directors?: string[];
+    screenwriters?: string[];
+    cast?: string[];
+    genres?: string[];
+    countries?: string[];
+    languages?: string[];
+    episodes?: number;
+    episode_length?: number;
+    first_aired?: string;
+    plot_summary?: string;
+  };
+}> {
+  try {
+    const response = await fetch(`/api/douban/details?id=${id}`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    return {
+      code: 500,
+      message: `获取豆瓣详情失败: ${(error as Error).message}`,
+    };
+  }
+}
+
 async function fetchDoubanRecommends(
   params: DoubanRecommendsParams,
   proxyUrl: string,

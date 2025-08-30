@@ -26,6 +26,7 @@ import {
   saveSkipConfig,
   subscribeToDataUpdates,
 } from '@/lib/db.client';
+import { getDoubanDetails } from '@/lib/douban.client';
 import { SearchResult } from '@/lib/types';
 import { getVideoResolutionFromM3u8, processImageUrl } from '@/lib/utils';
 
@@ -64,6 +65,10 @@ function PlayPageClient() {
 
   // 收藏状态
   const [favorited, setFavorited] = useState(false);
+
+  // 豆瓣详情状态
+  const [movieDetails, setMovieDetails] = useState<any>(null);
+  const [loadingMovieDetails, setLoadingMovieDetails] = useState(false);
 
   // 跳过片头片尾配置
   const [skipConfig, setSkipConfig] = useState<{
@@ -176,6 +181,29 @@ function PlayPageClient() {
     videoYear,
     videoDoubanId,
   ]);
+
+  // 加载豆瓣详情
+  useEffect(() => {
+    const loadMovieDetails = async () => {
+      if (!videoDoubanId || videoDoubanId === 0 || loadingMovieDetails || movieDetails) {
+        return;
+      }
+      
+      setLoadingMovieDetails(true);
+      try {
+        const response = await getDoubanDetails(videoDoubanId.toString());
+        if (response.code === 200 && response.data) {
+          setMovieDetails(response.data);
+        }
+      } catch (error) {
+        console.error('Failed to load movie details:', error);
+      } finally {
+        setLoadingMovieDetails(false);
+      }
+    };
+
+    loadMovieDetails();
+  }, [videoDoubanId, loadingMovieDetails, movieDetails]);
 
   // 视频播放地址
   const [videoUrl, setVideoUrl] = useState('');
@@ -3005,6 +3033,121 @@ function PlayPageClient() {
                 )}
                 {detail?.type_name && <span>{detail.type_name}</span>}
               </div>
+
+              {/* 豆瓣详细信息 */}
+              {videoDoubanId && videoDoubanId !== 0 && (
+                <div className='mb-4 flex-shrink-0'>
+                  {loadingMovieDetails && !movieDetails && (
+                    <div className='animate-pulse'>
+                      <div className='h-4 bg-gray-300 rounded w-64 mb-2'></div>
+                      <div className='h-4 bg-gray-300 rounded w-48'></div>
+                    </div>
+                  )}
+                  
+                  {movieDetails && (
+                    <div className='space-y-2 text-sm'>
+                      {/* 豆瓣评分 */}
+                      {movieDetails.rate && (
+                        <div className='flex items-center gap-2'>
+                          <span className='font-semibold text-gray-700 dark:text-gray-300'>豆瓣评分: </span>
+                          <div className='flex items-center'>
+                            <span className='text-yellow-600 dark:text-yellow-400 font-bold text-base'>
+                              {movieDetails.rate}
+                            </span>
+                            <div className='flex ml-1'>
+                              {[...Array(5)].map((_, i) => (
+                                <svg
+                                  key={i}
+                                  className={`w-3 h-3 ${
+                                    i < Math.floor(parseFloat(movieDetails.rate) / 2)
+                                      ? 'text-yellow-500'
+                                      : 'text-gray-300 dark:text-gray-600'
+                                  }`}
+                                  fill='currentColor'
+                                  viewBox='0 0 20 20'
+                                >
+                                  <path d='M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z' />
+                                </svg>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 导演 */}
+                      {movieDetails.directors && movieDetails.directors.length > 0 && (
+                        <div>
+                          <span className='font-semibold text-gray-700 dark:text-gray-300'>导演: </span>
+                          <span className='text-gray-600 dark:text-gray-400'>
+                            {movieDetails.directors.join('、')}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {/* 编剧 */}
+                      {movieDetails.screenwriters && movieDetails.screenwriters.length > 0 && (
+                        <div>
+                          <span className='font-semibold text-gray-700 dark:text-gray-300'>编剧: </span>
+                          <span className='text-gray-600 dark:text-gray-400'>
+                            {movieDetails.screenwriters.join('、')}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {/* 主演 */}
+                      {movieDetails.cast && movieDetails.cast.length > 0 && (
+                        <div>
+                          <span className='font-semibold text-gray-700 dark:text-gray-300'>主演: </span>
+                          <span className='text-gray-600 dark:text-gray-400'>
+                            {movieDetails.cast.join('、')}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {/* 首播日期 */}
+                      {movieDetails.first_aired && (
+                        <div>
+                          <span className='font-semibold text-gray-700 dark:text-gray-300'>
+                            {movieDetails.episodes ? '首播' : '上映'}: 
+                          </span>
+                          <span className='text-gray-600 dark:text-gray-400'>
+                            {movieDetails.first_aired}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {/* 标签信息 */}
+                      <div className='flex flex-wrap gap-2 mt-3'>
+                        {movieDetails.countries && movieDetails.countries.slice(0, 2).map((country: string, index: number) => (
+                          <span key={index} className='bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200 px-2 py-1 rounded-full text-xs'>
+                            {country}
+                          </span>
+                        ))}
+                        {movieDetails.languages && movieDetails.languages.slice(0, 2).map((language: string, index: number) => (
+                          <span key={index} className='bg-purple-200 dark:bg-purple-800 text-purple-800 dark:text-purple-200 px-2 py-1 rounded-full text-xs'>
+                            {language}
+                          </span>
+                        ))}
+                        {movieDetails.episodes && (
+                          <span className='bg-green-200 dark:bg-green-800 text-green-800 dark:text-green-200 px-2 py-1 rounded-full text-xs'>
+                            共{movieDetails.episodes}集
+                          </span>
+                        )}
+                        {movieDetails.episode_length && (
+                          <span className='bg-orange-200 dark:bg-orange-800 text-orange-800 dark:text-orange-200 px-2 py-1 rounded-full text-xs'>
+                            单集{movieDetails.episode_length}分钟
+                          </span>
+                        )}
+                        {movieDetails.movie_duration && (
+                          <span className='bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 px-2 py-1 rounded-full text-xs'>
+                            {movieDetails.movie_duration}分钟
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               {/* 剧情简介 */}
               {detail?.desc && (
                 <div

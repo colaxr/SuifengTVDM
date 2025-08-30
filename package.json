@@ -1,6 +1,6 @@
 {
   "name": "moontv",
-  "version": "4.3.6",
+  "version": "5.0.0",
   "private": true,
   "scripts": {
     "dev": "pnpm gen:manifest && next dev -H 0.0.0.0",
