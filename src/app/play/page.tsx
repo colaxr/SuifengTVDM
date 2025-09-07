@@ -962,8 +962,8 @@ function PlayPageClient() {
           console.log('HLS实例已销毁');
         }
 
-        // 3. 销毁ArtPlayer实例
-        artPlayerRef.current.destroy();
+        // 3. 销毁ArtPlayer实例 (使用false参数避免DOM清理冲突)
+        artPlayerRef.current.destroy(false);
         artPlayerRef.current = null;
 
         console.log('播放器资源已清理');
@@ -1978,6 +1978,11 @@ function PlayPageClient() {
       cleanupPlayer();
     }
 
+    // 确保 DOM 容器完全清空，避免多实例冲突
+    if (artRef.current) {
+      artRef.current.innerHTML = '';
+    }
+
     try {
       // 创建新的播放器实例
       Artplayer.PLAYBACK_RATE = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
@@ -2104,7 +2109,7 @@ function PlayPageClient() {
                   ) {
                     artPlayerRef.current.video.hls.destroy();
                   }
-                  artPlayerRef.current.destroy();
+                  artPlayerRef.current.destroy(false);
                   artPlayerRef.current = null;
                 }
                 setBlockAdEnabled(newVal);
@@ -2334,7 +2339,7 @@ function PlayPageClient() {
                 visible: localStorage.getItem('danmaku_visible') !== 'false',
                 emitter: false,
                 maxLength: 50,
-                lockTime: 3,
+                lockTime: 2, // v5.2.0优化: 减少锁定时间，降低快进时的延迟
                 theme: 'dark' as const,
                 width: 300,
                 
@@ -2374,21 +2379,25 @@ function PlayPageClient() {
                   return {
                     ...baseConfig,
                     antiOverlap: true, // 开启防重叠
-                    synchronousPlayback: true, // 开启同步播放
+                    synchronousPlayback: true, // 保持弹幕与视频播放速度同步
+                    useWorker: true, // v5.2.0: 启用Web Worker优化
                   }
                 
                 case 'medium': // 中等性能设备 - 适度优化
                   return {
                     ...baseConfig,
                     antiOverlap: !isMobile, // 移动端关闭防重叠
-                    synchronousPlayback: false, // 关闭同步播放计算
+                    synchronousPlayback: true, // 保持同步播放以确保体验一致
+                    useWorker: true, // v5.2.0: 中等设备也启用Worker
                   }
                 
-                case 'low': // 低性能设备 - 激进优化
+                case 'low': // 低性能设备 - 平衡优化
                   return {
                     ...baseConfig,
                     antiOverlap: false, // 关闭复杂的防重叠算法
-                    synchronousPlayback: false, // 关闭同步播放
+                    synchronousPlayback: true, // 保持同步以确保体验，计算量不大
+                    useWorker: true, // 开启Worker减少主线程负担
+                    maxLength: 30, // v5.2.0优化: 减少弹幕数量是关键优化
                   }
               }
             }
@@ -2655,7 +2664,7 @@ function PlayPageClient() {
           }
         });
 
-        // 监听播放进度跳转，优化弹幕重置
+        // 监听播放进度跳转，优化弹幕重置（减少闪烁）
         artPlayerRef.current.on('seek', () => {
           if (artPlayerRef.current?.plugins?.artplayerPluginDanmuku) {
             // 清除之前的重置计时器
@@ -2663,27 +2672,37 @@ function PlayPageClient() {
               clearTimeout(seekResetTimeoutRef.current);
             }
             
-            // 延迟重置弹幕，避免拖拽过程中频繁重置
+            // 增加延迟并只在非拖拽状态下重置，减少快进时的闪烁
             seekResetTimeoutRef.current = setTimeout(() => {
-              if (!isDraggingProgressRef.current && artPlayerRef.current?.plugins?.artplayerPluginDanmuku) {
+              if (!isDraggingProgressRef.current && artPlayerRef.current?.plugins?.artplayerPluginDanmuku && !artPlayerRef.current.seeking) {
                 artPlayerRef.current.plugins.artplayerPluginDanmuku.reset();
                 console.log('进度跳转，弹幕已重置');
               }
-            }, 200); // 200ms延迟
+            }, 500); // 增加到500ms延迟，减少频繁重置导致的闪烁
           }
         });
 
-        // 监听拖拽状态
+        // 监听拖拽状态 - v5.2.0优化: 在拖拽期间暂停弹幕更新以减少闪烁
         artPlayerRef.current.on('video:seeking', () => {
           isDraggingProgressRef.current = true;
+          // v5.2.0新增: 拖拽时暂停弹幕动画，减少CPU占用和闪烁
+          if (artPlayerRef.current?.plugins?.artplayerPluginDanmuku) {
+            artPlayerRef.current.plugins.artplayerPluginDanmuku.stop();
+          }
         });
 
         artPlayerRef.current.on('video:seeked', () => {
           isDraggingProgressRef.current = false;
-          // 拖拽结束后再重置弹幕
+          // v5.2.0优化: 拖拽结束后恢复弹幕播放并重置位置
           if (artPlayerRef.current?.plugins?.artplayerPluginDanmuku) {
-            artPlayerRef.current.plugins.artplayerPluginDanmuku.reset();
-            console.log('拖拽结束，弹幕已重置');
+            artPlayerRef.current.plugins.artplayerPluginDanmuku.start(); // 先恢复播放
+            setTimeout(() => {
+              // 延迟重置以确保播放状态稳定
+              if (artPlayerRef.current?.plugins?.artplayerPluginDanmuku) {
+                artPlayerRef.current.plugins.artplayerPluginDanmuku.reset();
+                console.log('拖拽结束，弹幕已重置');
+              }
+            }, 100);
           }
         });
 
