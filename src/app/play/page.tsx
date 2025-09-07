@@ -962,7 +962,7 @@ function PlayPageClient() {
           console.log('HLS实例已销毁');
         }
 
-        // 3. 销毁ArtPlayer实例 (使用false参数避免DOM清理冲突)
+        // 3. 销毁ArtPlayer实例 - 使用false参数避免清空DOM导致的错误
         artPlayerRef.current.destroy(false);
         artPlayerRef.current = null;
 
@@ -1987,6 +1987,8 @@ function PlayPageClient() {
       // 创建新的播放器实例
       Artplayer.PLAYBACK_RATE = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
       Artplayer.USE_RAF = true;
+      // 重新启用5.3.0内存优化功能，但使用false参数避免清空DOM
+      Artplayer.REMOVE_SRC_WHEN_DESTROY = true;
 
       artPlayerRef.current = new Artplayer({
         container: artRef.current,
@@ -2109,6 +2111,7 @@ function PlayPageClient() {
                   ) {
                     artPlayerRef.current.video.hls.destroy();
                   }
+                  // 使用false参数避免清空DOM导致的错误
                   artPlayerRef.current.destroy(false);
                   artPlayerRef.current = null;
                 }
@@ -2685,17 +2688,17 @@ function PlayPageClient() {
         // 监听拖拽状态 - v5.2.0优化: 在拖拽期间暂停弹幕更新以减少闪烁
         artPlayerRef.current.on('video:seeking', () => {
           isDraggingProgressRef.current = true;
-          // v5.2.0新增: 拖拽时暂停弹幕动画，减少CPU占用和闪烁
-          if (artPlayerRef.current?.plugins?.artplayerPluginDanmuku) {
-            artPlayerRef.current.plugins.artplayerPluginDanmuku.stop();
+          // v5.2.0新增: 拖拽时隐藏弹幕，减少CPU占用和闪烁
+          if (artPlayerRef.current?.plugins?.artplayerPluginDanmuku && !artPlayerRef.current.plugins.artplayerPluginDanmuku.isHide) {
+            artPlayerRef.current.plugins.artplayerPluginDanmuku.hide();
           }
         });
 
         artPlayerRef.current.on('video:seeked', () => {
           isDraggingProgressRef.current = false;
-          // v5.2.0优化: 拖拽结束后恢复弹幕播放并重置位置
+          // v5.2.0优化: 拖拽结束后恢复弹幕显示并重置位置
           if (artPlayerRef.current?.plugins?.artplayerPluginDanmuku) {
-            artPlayerRef.current.plugins.artplayerPluginDanmuku.start(); // 先恢复播放
+            artPlayerRef.current.plugins.artplayerPluginDanmuku.show(); // 先恢复显示
             setTimeout(() => {
               // 延迟重置以确保播放状态稳定
               if (artPlayerRef.current?.plugins?.artplayerPluginDanmuku) {
