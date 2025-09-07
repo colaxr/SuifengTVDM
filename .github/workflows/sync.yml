@@ -29,7 +29,13 @@ jobs:
       - name: Add upstream and fetch
         run: |
           git remote add upstream https://github.com/SzeMeng76/LunaTV.git
-          git fetch upstream main
+          git fetch upstream
+
+      - name: Detect upstream default branch
+        id: upstream_branch
+        run: |
+          UP_BRANCH=$(git remote show upstream | sed -n '/HEAD branch/s/.*: //p')
+          echo "branch=$UP_BRANCH" >> $GITHUB_OUTPUT
 
       - name: Backup local .github/workflows
         run: |
@@ -39,7 +45,7 @@ jobs:
       - name: Merge upstream into main
         run: |
           git checkout main
-          git merge upstream/main --allow-unrelated-histories --no-edit || true
+          git merge upstream/${{ steps.upstream_branch.outputs.branch }} --allow-unrelated-histories --no-edit
 
       - name: Restore .github/workflows
         run: |
