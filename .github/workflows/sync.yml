@@ -37,20 +37,14 @@ jobs:
           UP_BRANCH=$(git remote show upstream | sed -n '/HEAD branch/s/.*: //p')
           echo "branch=$UP_BRANCH" >> $GITHUB_OUTPUT
 
-      - name: Backup local .github/workflows
-        run: |
-          mkdir -p workflows_backup
-          cp -r .github/workflows workflows_backup/
-
-      - name: Merge upstream into main
+      - name: Merge upstream into main (ignore .github/workflows)
         run: |
           git checkout main
-          git merge upstream/${{ steps.upstream_branch.outputs.branch }} --allow-unrelated-histories --no-edit
-
-      - name: Restore .github/workflows
-        run: |
-          rm -rf .github/workflows
-          cp -r workflows_backup/ .github/workflows
+          git merge upstream/${{ steps.upstream_branch.outputs.branch }} --allow-unrelated-histories --no-edit || true
+          # 强制保留自己仓库的 .github/workflows
+          git checkout --ours .github/workflows || true
+          git add .github/workflows || true
+          git commit -m "Keep local .github/workflows" || true
 
       - name: Push changes using PAT
         env:
