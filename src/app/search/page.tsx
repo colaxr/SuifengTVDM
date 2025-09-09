@@ -733,17 +733,15 @@ function SearchPageClient() {
                   type='button'
                   onClick={() => {
                     setSearchType('video');
-                    // 如果当前有结果且是网盘搜索结果，清空结果
-                    if (showResults && netdiskResults) {
-                      setNetdiskResults(null);
-                      setNetdiskError(null);
-                      setNetdiskTotal(0);
-                      // 如果有搜索词，触发影视搜索
-                      const currentQuery = searchQuery.trim() || searchParams?.get('q');
-                      if (currentQuery) {
-                        setIsLoading(true);
-                        router.push(`/search?q=${encodeURIComponent(currentQuery)}`);
-                      }
+                    // 切换到影视搜索时，总是清除网盘搜索状态
+                    setNetdiskResults(null);
+                    setNetdiskError(null);
+                    setNetdiskTotal(0);
+                    // 如果有搜索词且当前显示结果，触发影视搜索
+                    const currentQuery = searchQuery.trim() || searchParams?.get('q');
+                    if (currentQuery && showResults) {
+                      setIsLoading(true);
+                      router.push(`/search?q=${encodeURIComponent(currentQuery)}`);
                     }
                   }}
                   className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -758,6 +756,9 @@ function SearchPageClient() {
                   type='button'
                   onClick={() => {
                     setSearchType('netdisk');
+                    // 清除之前的网盘搜索状态，确保重新开始
+                    setNetdiskError(null);
+                    setNetdiskResults(null);
                     // 如果当前有搜索词，立即触发网盘搜索
                     const currentQuery = searchQuery.trim() || searchParams?.get('q');
                     if (currentQuery && showResults) {
