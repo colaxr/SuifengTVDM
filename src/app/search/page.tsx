@@ -441,11 +441,11 @@ function SearchPageClient() {
   useEffect(() => {
     if (searchType === 'netdisk' && showResults) {
       const currentQuery = searchQuery.trim() || searchParams.get('q');
-      if (currentQuery && !netdiskLoading && !netdiskResults) {
+      if (currentQuery && !netdiskLoading && !netdiskResults && !netdiskError) {
         handleNetDiskSearch(currentQuery);
       }
     }
-  }, [searchType, showResults, searchQuery, searchParams, netdiskLoading, netdiskResults]);
+  }, [searchType, showResults, searchQuery, searchParams, netdiskLoading, netdiskResults, netdiskError]);
 
   useEffect(() => {
     // 当搜索参数变化时更新搜索状态
@@ -656,10 +656,12 @@ function SearchPageClient() {
       const response = await fetch(`/api/netdisk/search?q=${encodeURIComponent(query.trim())}`);
       const data = await response.json();
 
-      if (data.success) {
+      // 检查响应状态和success字段
+      if (response.ok && data.success) {
         setNetdiskResults(data.data.merged_by_type || {});
         setNetdiskTotal(data.data.total || 0);
       } else {
+        // 处理错误情况（包括功能关闭、配置错误等）
         setNetdiskError(data.error || '网盘搜索失败');
       }
     } catch (error: any) {
