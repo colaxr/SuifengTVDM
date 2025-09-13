@@ -3951,7 +3951,7 @@ function PlayPageClient() {
               </div>
 
               {/* 详细信息（豆瓣或bangumi） */}
-              {videoDoubanId && videoDoubanId !== 0 && detail && detail.source !== 'shortdrama' && currentSource !== 'shortdrama' && (
+              {currentSource !== 'shortdrama' && videoDoubanId && videoDoubanId !== 0 && detail && detail.source !== 'shortdrama' && (
                 <div className='mb-4 flex-shrink-0'>
                   {/* 加载状态 */}
                   {(loadingMovieDetails || loadingBangumiDetails) && !movieDetails && !bangumiDetails && (
