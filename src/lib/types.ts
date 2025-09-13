@@ -23,7 +23,52 @@ export interface Favorite {
   cover: string;
   save_time: number; // 记录保存时间（时间戳）
   search_title: string; // 搜索时使用的标题
-  origin?: 'vod' | 'live';
+  origin?: 'vod' | 'live' | 'shortdrama';
+}
+
+// 短剧分类数据结构
+export interface ShortDramaCategory {
+  type_id: number;
+  type_name: string;
+}
+
+// 短剧列表项数据结构
+export interface ShortDramaItem {
+  id: number;
+  name: string;
+  cover: string;
+  update_time: string;
+  score: number;
+  episode_count: number;
+  description?: string;
+}
+
+// 短剧解析结果数据结构
+export interface ShortDramaParseResult {
+  code: number;
+  msg?: string;
+  data?: {
+    videoId: number;
+    videoName: string;
+    currentEpisode: number;
+    totalEpisodes: number;
+    parsedUrl: string;
+    proxyUrl: string;
+    cover: string;
+    description: string;
+    episode?: {
+      index: number;
+      label: string;
+      parsedUrl: string;
+    };
+  };
+}
+
+// 短剧API响应数据结构
+export interface ShortDramaResponse<T> {
+  code: number;
+  msg?: string;
+  data: T;
 }
 
 // 存储接口
