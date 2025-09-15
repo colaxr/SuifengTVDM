@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// 标记为动态路由
+// 强制动态路由，禁用所有缓存
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 
 // 服务端专用函数，直接调用外部API
 async function searchShortDramasInternal(
@@ -67,11 +69,25 @@ export async function GET(request: NextRequest) {
 
     const result = await searchShortDramasInternal(query, pageNum, pageSize);
 
-    // 搜索结果不设置长时间缓存，只缓存5分钟避免频繁请求
-    const maxAge = 5 * 60; // 5分钟转秒
+    // 强力禁用所有层级的缓存
     const response = NextResponse.json(result);
-    response.headers.set('Cache-Control', `public, max-age=${maxAge}, s-maxage=${maxAge}`);
-    response.headers.set('Vary', 'Accept-Encoding');
+
+    // 标准HTTP缓存控制
+    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, proxy-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+
+    // 移动端特定缓存控制
+    response.headers.set('Surrogate-Control', 'no-store');
+    response.headers.set('X-Accel-Expires', '0');
+
+    // 防止代理缓存
+    response.headers.set('Vary', 'Accept-Encoding, User-Agent');
+
+    // 强制刷新标识
+    response.headers.set('X-Cache-Status', 'MISS');
+    response.headers.set('X-Debug-Timestamp', new Date().toISOString());
+    response.headers.set('X-Force-Refresh', 'true');
 
     return response;
   } catch (error) {
