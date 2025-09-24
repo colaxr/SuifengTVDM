@@ -1746,12 +1746,9 @@ export const UserMenu: React.FC = () => {
         >
           <User className='w-full h-full' />
         </button>
-        {updateStatus === UpdateStatus.HAS_UPDATE && (
+        {/* 统一更新提醒点：版本更新或剧集更新都显示橙色点 */}
+        {((updateStatus === UpdateStatus.HAS_UPDATE) || (hasUnreadUpdates && totalUpdates > 0)) && (
           <div className='absolute top-[2px] right-[2px] w-2 h-2 bg-yellow-500 rounded-full'></div>
-        )}
-        {/* 更新提醒红点 */}
-        {hasUnreadUpdates && totalUpdates > 0 && (
-          <div className='absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-gray-900'></div>
         )}
       </div>
 
