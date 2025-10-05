@@ -170,20 +170,20 @@ This project is licensed under **CC BY-NC-SA 4.0**, with the following terms:
 
 ## 🗺 Table of Contents
 
-- [Tech Stack](#tech-stack)
-- [Deployment](#deployment)
-  - [Docker Deployment (Recommended)](#deployment)
-  - [Vercel Deployment (Serverless)](#vercel-deployment-serverless)
-- [Configuration File](#configuration-file)
-- [Environment Variables](#environment-variables)
-- [Feature Configuration](#feature-configuration)
-- [Auto Update](#auto-update)
-- [Mobile App Usage](#mobile-app-usage)
-- [AndroidTV / Tablet Usage](#androidtv--tablet-usage)
-- [Changelog](#changelog)
-- [Security & Privacy Notice](#security--privacy-notice)
-- [License](#license)
-- [Acknowledgments](#acknowledgments)
+- [Tech Stack](#-tech-stack)
+- [Deployment](#-deployment)
+  - [Docker Deployment (Recommended)](#-recommended-kvrocks-storage)
+  - [Vercel Deployment (Serverless)](#-vercel-deployment-serverless)
+- [Configuration File](#️-configuration-file)
+- [Environment Variables](#-environment-variables)
+- [Feature Configuration](#️-feature-configuration)
+- [Auto Update](#-auto-update)
+- [Mobile App Usage](#-mobile-app-usage)
+- [AndroidTV / Tablet Usage](#-androidtv--tablet-usage)
+- [Changelog](#-changelog)
+- [Security & Privacy Notice](#-security--privacy-notice)
+- [License](#-license)
+- [Acknowledgments](#-acknowledgments)
 
 ---
 
