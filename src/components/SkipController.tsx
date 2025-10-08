@@ -51,6 +51,20 @@ export default function SkipController({
     autoNextEpisode: true,  // 自动下一集开关
   });
 
+  // 从 localStorage 读取用户全局设置
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedEnableAutoSkip = localStorage.getItem('enableAutoSkip');
+      const savedEnableAutoNextEpisode = localStorage.getItem('enableAutoNextEpisode');
+
+      setBatchSettings(prev => ({
+        ...prev,
+        autoSkip: savedEnableAutoSkip !== null ? JSON.parse(savedEnableAutoSkip) : true,
+        autoNextEpisode: savedEnableAutoNextEpisode !== null ? JSON.parse(savedEnableAutoNextEpisode) : true,
+      }));
+    }
+  }, []);
+
   const lastSkipTimeRef = useRef<number>(0);
   const skipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const autoSkipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -397,6 +411,26 @@ export default function SkipController({
   const handleSkip = useCallback(() => {
     if (!currentSkipSegment || !artPlayerRef.current) return;
 
+    // 如果是片尾且有下一集回调，则播放下一集
+    if (currentSkipSegment.type === 'ending' && onNextEpisode) {
+      setShowSkipButton(false);
+      setCurrentSkipSegment(null);
+
+      if (skipTimeoutRef.current) {
+        clearTimeout(skipTimeoutRef.current);
+      }
+
+      // 显示提示
+      if (artPlayerRef.current.notice) {
+        artPlayerRef.current.notice.show = '正在播放下一集...';
+      }
+
+      // 调用下一集回调
+      onNextEpisode();
+      return;
+    }
+
+    // 片头或没有下一集回调时，执行普通跳过
     const targetTime = currentSkipSegment.end + 1; // 跳到片段结束后1秒
     artPlayerRef.current.currentTime = targetTime;
     lastSkipTimeRef.current = Date.now();
@@ -413,7 +447,7 @@ export default function SkipController({
       const segmentName = currentSkipSegment.type === 'opening' ? '片头' : '片尾';
       artPlayerRef.current.notice.show = `已跳过${segmentName}`;
     }
-  }, [currentSkipSegment, artPlayerRef]);
+  }, [currentSkipSegment, artPlayerRef, onNextEpisode]);
 
   // 保存新的跳过片段（单个片段模式）
   const handleSaveSegment = useCallback(async () => {
@@ -686,7 +720,7 @@ export default function SkipController({
               onClick={handleSkip}
               className="px-3 py-1 bg-green-600 hover:bg-green-700 rounded text-sm font-medium transition-colors"
             >
-              跳过
+              {currentSkipSegment.type === 'ending' && onNextEpisode ? '下一集 ▶' : '跳过'}
             </button>
           </div>
         </div>
