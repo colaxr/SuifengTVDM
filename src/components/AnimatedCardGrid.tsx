@@ -31,7 +31,7 @@ const itemVariants = {
     y: 0,
     transition: {
       duration: 0.2, // 使用简单的 duration 替代复杂的 spring 动画
-      ease: 'easeOut',
+      ease: 'easeOut' as const,
     },
   },
 };
