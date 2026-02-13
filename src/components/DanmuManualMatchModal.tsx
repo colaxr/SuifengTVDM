@@ -32,6 +32,7 @@ interface DanmuManualMatchModalProps {
   currentEpisode: number;
   onClose: () => void;
   onApply: (selection: DanmuManualSelection) => Promise<void> | void;
+  portalContainer?: HTMLElement | null;
 }
 
 function buildAnimeMeta(anime: DanmuSearchAnimeItem): string {
@@ -46,6 +47,7 @@ export default function DanmuManualMatchModal({
   currentEpisode,
   onClose,
   onApply,
+  portalContainer,
 }: DanmuManualMatchModalProps) {
   const [mounted, setMounted] = useState(false);
   const [keyword, setKeyword] = useState(defaultKeyword);
@@ -346,6 +348,6 @@ export default function DanmuManualMatchModal({
         </div>
       </div>
     </>,
-    document.body,
+    portalContainer || document.body,
   );
 }
