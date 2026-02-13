@@ -12,7 +12,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 
 import { useDownload } from '@/contexts/DownloadContext';
 import { useDanmu } from '@/hooks/useDanmu';
+import type { DanmuManualOverride } from '@/hooks/useDanmu';
 import DownloadEpisodeSelector from '@/components/download/DownloadEpisodeSelector';
+import DanmuManualMatchModal, { type DanmuManualSelection } from '@/components/DanmuManualMatchModal';
 import EpisodeSelector from '@/components/EpisodeSelector';
 import NetDiskSearchResults from '@/components/NetDiskSearchResults';
 import AcgSearch from '@/components/AcgSearch';
@@ -150,6 +152,8 @@ function PlayPageClient() {
 
   // 弹幕设置面板状态
   const [isDanmuSettingsPanelOpen, setIsDanmuSettingsPanelOpen] = useState(false);
+  const [isDanmuManualModalOpen, setIsDanmuManualModalOpen] = useState(false);
+  const [manualDanmuOverrides, setManualDanmuOverrides] = useState<Record<string, DanmuManualSelection>>({});
   const [, setDanmuSettingsVersion] = useState(0);
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
 
@@ -226,12 +230,14 @@ function PlayPageClient() {
     canvas: HTMLCanvasElement | null;
     weightsCache: Map<string, any>;
     isActive: boolean;
+    renderLoopActive: boolean;
   }>({
     instance: null,
     gpu: null,
     canvas: null,
     weightsCache: new Map(),
     isActive: false,
+    renderLoopActive: false,
   });
 
   const websrEnabledRef = useRef(websrEnabled);
@@ -410,6 +416,9 @@ function PlayPageClient() {
   const artRef = useRef<HTMLDivElement | null>(null);
 
   // 🚀 使用 useDanmu Hook 管理弹幕
+  const danmuScopeKey = `${videoTitle}_${videoYear}_${videoDoubanId}_${currentEpisodeIndex + 1}`;
+  const activeManualDanmuOverride: DanmuManualOverride | null = manualDanmuOverrides[danmuScopeKey] || null;
+
   const {
     externalDanmuEnabled,
     setExternalDanmuEnabled,
@@ -430,6 +439,7 @@ function PlayPageClient() {
     currentEpisodeIndex,
     currentSource,
     artPlayerRef,
+    manualOverride: activeManualDanmuOverride,
   });
 
   // ✅ 合并所有 ref 同步的 useEffect - 减少不必要的渲染
@@ -2002,7 +2012,6 @@ function PlayPageClient() {
       const networkName = getWebsrNetworkName(websrModeRef.current, websrNetworkSizeRef.current);
 
       const websr = new WebSR({
-        source: video,
         canvas: canvas,
         weights: weights,
         network_name: networkName,
@@ -2012,9 +2021,23 @@ function PlayPageClient() {
       websrRef.current.instance = websr;
       websrRef.current.canvas = canvas;
       websrRef.current.isActive = true;
+      websrRef.current.renderLoopActive = true;
 
-      // 启动渲染
-      await websr.start();
+      // 使用 requestVideoFrameCallback 手动渲染循环
+      const renderFrame = () => {
+        if (!websrRef.current.renderLoopActive || !websrRef.current.instance) return;
+        websrRef.current.instance.render(video).then(() => {
+          if (websrRef.current.renderLoopActive) {
+            video.requestVideoFrameCallback(renderFrame);
+          }
+        }).catch((err: any) => {
+          console.warn('WebSR render error:', err);
+          if (websrRef.current.renderLoopActive) {
+            video.requestVideoFrameCallback(renderFrame);
+          }
+        });
+      };
+      video.requestVideoFrameCallback(renderFrame);
 
       // 隐藏原始视频
       video.style.opacity = '0';
@@ -2052,6 +2075,7 @@ function PlayPageClient() {
   const destroyWebSR = async () => {
     const ref = websrRef.current;
     ref.isActive = false;
+    ref.renderLoopActive = false;
 
     try {
       if (ref.instance) {
@@ -5562,11 +5586,60 @@ function PlayPageClient() {
                 }
                 return result.count;
               }}
+              isManualOverridden={!!activeManualDanmuOverride}
+              onManualMatch={() => {
+                setIsDanmuSettingsPanelOpen(false);
+                setIsDanmuManualModalOpen(true);
+              }}
+              onClearManualMatch={async () => {
+                setManualDanmuOverrides((prev) => {
+                  const next = { ...prev };
+                  delete next[danmuScopeKey];
+                  return next;
+                });
+                // Reload with auto matching
+                const result = await loadExternalDanmu({ force: true, manualOverride: null });
+                if (artPlayerRef.current?.plugins?.artplayerPluginDanmuku) {
+                  artPlayerRef.current.plugins.artplayerPluginDanmuku.load(result.data);
+                  artPlayerRef.current.notice.show = result.count > 0
+                    ? `已恢复自动匹配，加载 ${result.count} 条弹幕`
+                    : '已恢复自动匹配，暂无弹幕';
+                }
+              }}
             />
           </div>
         </div>,
         portalContainer
       )}
+
+      {/* 手动匹配弹幕弹窗 */}
+      <DanmuManualMatchModal
+        isOpen={isDanmuManualModalOpen}
+        defaultKeyword={videoTitle}
+        currentEpisode={currentEpisodeIndex + 1}
+        onClose={() => setIsDanmuManualModalOpen(false)}
+        onApply={async (selection) => {
+          setManualDanmuOverrides((prev) => ({
+            ...prev,
+            [danmuScopeKey]: selection,
+          }));
+          setIsDanmuManualModalOpen(false);
+
+          const override: DanmuManualOverride = {
+            animeId: selection.animeId,
+            episodeId: selection.episodeId,
+            animeTitle: selection.animeTitle,
+            episodeTitle: selection.episodeTitle,
+          };
+          const result = await loadExternalDanmu({ force: true, manualOverride: override });
+          if (artPlayerRef.current?.plugins?.artplayerPluginDanmuku) {
+            artPlayerRef.current.plugins.artplayerPluginDanmuku.load(result.data);
+            artPlayerRef.current.notice.show = result.count > 0
+              ? `已手动匹配: ${selection.animeTitle} · ${selection.episodeTitle} (${result.count} 条)`
+              : `已手动匹配，但该集暂无弹幕`;
+          }
+        }}
+      />
 
       {/* WebSR 设置面板 */}
       {isWebSRSettingsPanelOpen && portalContainer && createPortal(
