@@ -19,7 +19,12 @@ interface DownloadContextType {
   settings: DownloadSettings;
   setSettings: (settings: DownloadSettings) => void;
   streamModeSupport: StreamModeSupport;
-  createTask: (url: string, title: string, type?: 'TS' | 'MP4') => Promise<void>;
+  createTask: (
+    url: string,
+    title: string,
+    type?: 'TS' | 'MP4',
+    requestHeaders?: { referer?: string; origin?: string; userAgent?: string }
+  ) => Promise<void>;
   startTask: (taskId: string) => Promise<void>;
   pauseTask: (taskId: string) => void;
   cancelTask: (taskId: string) => void;
@@ -96,10 +101,15 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const createTask = useCallback(
-    async (url: string, title: string, type: 'TS' | 'MP4' = 'TS') => {
+    async (
+      url: string,
+      title: string,
+      type: 'TS' | 'MP4' = 'TS',
+      requestHeaders?: { referer?: string; origin?: string; userAgent?: string }
+    ) => {
       try {
-        // 解析 M3U8
-        const m3u8Task = await parseM3U8(url);
+        // 解析 M3U8，传递请求头
+        const m3u8Task = await parseM3U8(url, requestHeaders);
 
         // 创建任务对象
         const taskId = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -144,10 +154,11 @@ export function DownloadProvider({ children }: { children: React.ReactNode }) {
         await downloadM3U8Video(
           task,
           (progress: DownloadProgress) => {
-            // 更新进度
+            // 更新进度（包含优化的消息）
             updateTask(taskId, {
               finishNum: progress.current,
               downloadIndex: progress.current,
+              progress, // 保存完整的 progress 对象
             });
           },
           abortController.signal,
