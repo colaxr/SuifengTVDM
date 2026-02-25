@@ -24,6 +24,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { getAuthInfoFromBrowserCookie } from '@/lib/auth';
 import { CURRENT_VERSION } from '@/lib/version';
@@ -46,6 +47,7 @@ import { useDownload } from '@/contexts/DownloadContext';
 
 import { VersionPanel } from './VersionPanel';
 import VideoCard from './VideoCard';
+import { UserEmbyConfig } from './UserEmbyConfig';
 import {
   useWatchRoomConfigQuery,
   useServerConfigQuery,
@@ -63,6 +65,7 @@ interface AuthInfo {
 
 export const UserMenu: React.FC = () => {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
@@ -143,6 +146,28 @@ export const UserMenu: React.FC = () => {
   const [downloadFormat, setDownloadFormat] = useState<'TS' | 'MP4'>('TS');
   // 精确搜索开关
   const [exactSearch, setExactSearch] = useState(true);
+
+  // Emby 配置相关状态
+  const [embyConfig, setEmbyConfig] = useState<{
+    sources: Array<{
+      key: string;
+      name: string;
+      enabled: boolean;
+      ServerURL: string;
+      ApiKey?: string;
+      Username?: string;
+      Password?: string;
+      // 高级选项
+      removeEmbyPrefix?: boolean;
+      appendMediaSourceId?: boolean;
+      transcodeMp4?: boolean;
+      proxyPlay?: boolean;
+    }>;
+  }>({ sources: [] });
+  const [embySaving, setEmbySaving] = useState(false);
+  const [showEmbyToast, setShowEmbyToast] = useState(false);
+  const [embyToastMessage, setEmbyToastMessage] = useState('');
+  const [embyToastType, setEmbyToastType] = useState<'success' | 'error'>('success');
 
   // 豆瓣数据源选项
   const doubanDataSourceOptions = [
@@ -257,6 +282,20 @@ export const UserMenu: React.FC = () => {
       setAuthInfo(auth);
     }
   }, []);
+
+  // 加载用户 Emby 配置
+  useEffect(() => {
+    if (isSettingsOpen) {
+      fetch('/api/user/emby-config')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.config) {
+            setEmbyConfig(data.config);
+          }
+        })
+        .catch(err => console.error('加载 Emby 配置失败:', err));
+    }
+  }, [isSettingsOpen]);
 
   // 🚀 观影室配置和下载配置由 TanStack Query 自动管理
 
@@ -873,6 +912,71 @@ export const UserMenu: React.FC = () => {
     }
   };
 
+  // Emby 配置相关函数
+  const showEmbyNotification = (message: string, type: 'success' | 'error') => {
+    setEmbyToastMessage(message);
+    setEmbyToastType(type);
+    setShowEmbyToast(true);
+    setTimeout(() => setShowEmbyToast(false), 3000);
+  };
+
+  const handleSaveEmbyConfig = async () => {
+    setEmbySaving(true);
+    try {
+      const res = await fetch('/api/user/emby-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: embyConfig }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showEmbyNotification('Emby 配置保存成功！', 'success');
+        // 使 ModernNav 的 Emby 配置缓存失效，触发重新检查
+        queryClient.invalidateQueries({ queryKey: ['user', 'emby-config'] });
+        // 重新加载配置以确认保存成功
+        const reloadRes = await fetch('/api/user/emby-config');
+        const reloadData = await reloadRes.json();
+        if (reloadData.success && reloadData.config) {
+          setEmbyConfig(reloadData.config);
+        }
+      } else {
+        showEmbyNotification(`保存失败: ${data.error}`, 'error');
+      }
+    } catch (err) {
+      console.error('保存 Emby 配置失败:', err);
+      showEmbyNotification('保存失败，请重试', 'error');
+    } finally {
+      setEmbySaving(false);
+    }
+  };
+
+  const handleAddEmbySource = () => {
+    setEmbyConfig({
+      sources: [
+        ...embyConfig.sources,
+        {
+          key: `emby_${Date.now()}`,
+          name: '新 Emby 源',
+          enabled: true,
+          ServerURL: '',
+          ApiKey: '',
+        },
+      ],
+    });
+  };
+
+  const handleRemoveEmbySource = (index: number) => {
+    setEmbyConfig({
+      sources: embyConfig.sources.filter((_, i) => i !== index),
+    });
+  };
+
+  const handleUpdateEmbySource = (index: number, field: string, value: any) => {
+    const newSources = [...embyConfig.sources];
+    (newSources[index] as any)[field] = value;
+    setEmbyConfig({ sources: newSources });
+  };
+
   const handleResetSettings = () => {
     const defaultDoubanProxyType =
       (window as any).RUNTIME_CONFIG?.DOUBAN_PROXY_TYPE || 'direct';
@@ -1257,6 +1361,24 @@ export const UserMenu: React.FC = () => {
 
           {/* 设置项 */}
           <div className='space-y-6'>
+            {/* Emby 配置 */}
+            <div className='space-y-3'>
+              <div>
+                <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
+                  Emby私人影库
+                </h4>
+                <p className='text-xs text-gray-500 dark:text-gray-400 mt-1'>
+                  配置你的私人 Emby 服务器
+                </p>
+              </div>
+
+              <UserEmbyConfig initialConfig={embyConfig} />
+            </div>
+
+            {/* 分割线 */}
+            {/* 分割线 */}
+            <div className='border-t border-gray-200 dark:border-gray-700'></div>
+
             {/* 豆瓣数据源选择 */}
             <div className='space-y-3'>
               <div>
@@ -1974,6 +2096,26 @@ export const UserMenu: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Toast 通知 */}
+      {showEmbyToast && (
+        <div className='fixed top-20 left-1/2 -translate-x-1/2 z-[1100] animate-in fade-in slide-in-from-top-2 duration-300'>
+          <div
+            className={`px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 ${
+              embyToastType === 'success'
+                ? 'bg-green-500 text-white'
+                : 'bg-red-500 text-white'
+            }`}
+          >
+            {embyToastType === 'success' ? (
+              <Check className='w-5 h-5' />
+            ) : (
+              <X className='w-5 h-5' />
+            )}
+            <span className='font-medium'>{embyToastMessage}</span>
+          </div>
+        </div>
+      )}
     </>
   );
 
