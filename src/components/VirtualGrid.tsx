@@ -1,6 +1,6 @@
 'use client';
 
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 interface VirtualGridProps<T> {
@@ -58,11 +58,33 @@ export default function VirtualGrid<T>({
 
   const rowCount = Math.ceil(items.length / columns);
 
-  const virtualizer = useVirtualizer({
+  // Calculate scrollMargin: distance from page top to container top
+  // This is required for useWindowVirtualizer to correctly position items
+  const [scrollMargin, setScrollMargin] = useState(0);
+
+  useEffect(() => {
+    if (parentRef.current) {
+      const updateScrollMargin = () => {
+        const rect = parentRef.current?.getBoundingClientRect();
+        if (rect) {
+          // scrollMargin = distance from page top = rect.top + current scroll position
+          setScrollMargin(rect.top + window.scrollY);
+        }
+      };
+
+      updateScrollMargin();
+
+      // Update on resize in case layout changes
+      window.addEventListener('resize', updateScrollMargin);
+      return () => window.removeEventListener('resize', updateScrollMargin);
+    }
+  }, []);
+
+  const virtualizer = useWindowVirtualizer({
     count: rowCount,
-    getScrollElement: () => document.documentElement,
     estimateSize: () => estimateRowHeight,
     overscan,
+    scrollMargin,
   });
 
   const virtualRows = virtualizer.getVirtualItems();
@@ -112,7 +134,7 @@ export default function VirtualGrid<T>({
             top: 0,
             left: 0,
             width: '100%',
-            transform: `translateY(${virtualRows[0]?.start ?? 0}px)`,
+            transform: `translateY(${(virtualRows[0]?.start ?? 0) - scrollMargin}px)`,
           }}
         >
           {virtualRows.map((virtualRow) => {
