@@ -127,38 +127,34 @@ export default function VirtualGrid<T>({
           position: 'relative',
         }}
       >
-        {/* Container with unified offset - official pattern */}
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            transform: `translateY(${(virtualRows[0]?.start ?? 0) - scrollMargin}px)`,
-          }}
-        >
-          {virtualRows.map((virtualRow) => {
-            const startIdx = virtualRow.index * columns;
-            const rowItems = items.slice(startIdx, startIdx + columns);
+        {virtualRows.map((virtualRow) => {
+          const startIdx = virtualRow.index * columns;
+          const rowItems = items.slice(startIdx, startIdx + columns);
 
-            return (
-              <div
-                key={virtualRow.key}
-                data-index={virtualRow.index}
-                ref={virtualizer.measureElement}
-                className={rowGapClass}
-              >
-                <div className={`grid ${className}`}>
-                  {rowItems.map((item, i) => (
-                    <React.Fragment key={startIdx + i}>
-                      {renderItem(item, startIdx + i)}
-                    </React.Fragment>
-                  ))}
-                </div>
+          return (
+            <div
+              key={virtualRow.key}
+              data-index={virtualRow.index}
+              ref={virtualizer.measureElement}
+              className={rowGapClass}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${virtualRow.start - scrollMargin}px)`,
+              }}
+            >
+              <div className={`grid ${className}`}>
+                {rowItems.map((item, i) => (
+                  <React.Fragment key={startIdx + i}>
+                    {renderItem(item, startIdx + i)}
+                  </React.Fragment>
+                ))}
               </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })}
       </div>
     </>
   );
