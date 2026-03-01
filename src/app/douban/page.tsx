@@ -25,8 +25,7 @@ import VideoCard from '@/components/VideoCard';
 import VirtualGrid from '@/components/VirtualGrid';
 
 // 🔧 统一分页常量 - 防止分页步长不一致导致重复数据
-// 增加初始加载数量以填满可视区域（3列 × 11行 + overscan）
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 25;
 
 function DoubanPageClient() {
   const searchParams = useSearchParams();
@@ -767,7 +766,10 @@ function DoubanPageClient() {
           setCurrentPage((prev) => prev + 1);
         }
       },
-      { threshold: 0.1 }
+      {
+        threshold: 0.1,
+        rootMargin: '800px' // 提前 800px 触发加载，实现无感加载
+      }
     );
 
     observer.observe(loadingRef.current);
@@ -1018,6 +1020,12 @@ function DoubanPageClient() {
                   className='grid-cols-3 gap-x-2 px-0 sm:px-2 sm:grid-cols-[repeat(auto-fill,minmax(160px,1fr))] sm:gap-x-8'
                   rowGapClass='pb-12 sm:pb-20'
                   estimateRowHeight={320}
+                  endReached={() => {
+                    if (hasMore && !isLoadingMore && !loading) {
+                      setCurrentPage((prev) => prev + 1);
+                    }
+                  }}
+                  endReachedThreshold={3}
                   renderItem={(item, index) => {
                     const mappedType = type === 'movie' ? 'movie' : type === 'show' ? 'variety' : type === 'tv' ? 'tv' : type === 'anime' ? 'anime' : '';
                     return (
