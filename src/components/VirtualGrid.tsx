@@ -58,33 +58,11 @@ export default function VirtualGrid<T>({
 
   const rowCount = Math.ceil(items.length / columns);
 
-  // Calculate scrollMargin: distance from page top to container top
-  // This is required for useWindowVirtualizer to correctly position items
-  const [scrollMargin, setScrollMargin] = useState(0);
-
-  useEffect(() => {
-    if (parentRef.current) {
-      const updateScrollMargin = () => {
-        const rect = parentRef.current?.getBoundingClientRect();
-        if (rect) {
-          // scrollMargin = distance from page top = rect.top + current scroll position
-          setScrollMargin(rect.top + window.scrollY);
-        }
-      };
-
-      updateScrollMargin();
-
-      // Update on resize in case layout changes
-      window.addEventListener('resize', updateScrollMargin);
-      return () => window.removeEventListener('resize', updateScrollMargin);
-    }
-  }, []);
-
   const virtualizer = useWindowVirtualizer({
     count: rowCount,
     estimateSize: () => estimateRowHeight,
     overscan,
-    scrollMargin,
+    scrollMargin: parentRef.current?.offsetTop ?? 0,
   });
 
   const virtualRows = virtualizer.getVirtualItems();
@@ -142,7 +120,7 @@ export default function VirtualGrid<T>({
                 top: 0,
                 left: 0,
                 width: '100%',
-                transform: `translateY(${virtualRow.start - scrollMargin}px)`,
+                transform: `translateY(${virtualRow.start - (parentRef.current?.offsetTop ?? 0)}px)`,
               }}
             >
               <div className={`grid ${className}`}>
