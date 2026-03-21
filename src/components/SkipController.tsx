@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, no-console */
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ChangeEventHandler, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   deleteSkipConfig,
@@ -20,12 +20,33 @@ interface QuickSkipPreset {
 }
 
 const QUICK_SKIP_PRESETS_KEY = 'moontv_quick_skip_presets';
+const MAX_PRESET_COUNT = 20;
+
+function sanitizePresetList(input: unknown[]): QuickSkipPreset[] {
+  return input
+    .map((item): QuickSkipPreset | null => {
+      if (!item || typeof item !== 'object') return null;
+      const p = item as Record<string, unknown>;
+      const name = typeof p.name === 'string' ? p.name.trim().slice(0, 30) : '';
+      const duration = Number(p.duration);
+      if (!name || !Number.isFinite(duration) || duration <= 0) return null;
+      return {
+        id: typeof p.id === 'string' && p.id ? p.id : Date.now().toString(),
+        name,
+        duration,
+      };
+    })
+    .filter((item): item is QuickSkipPreset => item !== null)
+    .slice(0, MAX_PRESET_COUNT);
+}
 
 function loadQuickSkipPresets(): QuickSkipPreset[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(QUICK_SKIP_PRESETS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? sanitizePresetList(parsed) : [];
   } catch {
     return [];
   }
@@ -33,7 +54,7 @@ function loadQuickSkipPresets(): QuickSkipPreset[] {
 
 function saveQuickSkipPresetsToStorage(presets: QuickSkipPreset[]): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(QUICK_SKIP_PRESETS_KEY, JSON.stringify(presets));
+  localStorage.setItem(QUICK_SKIP_PRESETS_KEY, JSON.stringify(presets.slice(0, MAX_PRESET_COUNT)));
 }
 
 interface SkipControllerProps {
@@ -72,6 +93,19 @@ export default function SkipController({
   const [newPresetDuration, setNewPresetDuration] = useState('');
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [editPresetName, setEditPresetName] = useState('');
+
+  // 导入/导出相关状态
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [pendingImportedPresets, setPendingImportedPresets] = useState<QuickSkipPreset[]>([]);
+  const [presetFeedback, setPresetFeedback] = useState('');
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+
+  // 反馈信息自动清除
+  useEffect(() => {
+    if (!presetFeedback) return;
+    const timer = setTimeout(() => setPresetFeedback(''), 3000);
+    return () => clearTimeout(timer);
+  }, [presetFeedback]);
   const [editPresetDuration, setEditPresetDuration] = useState('');
 
   // 新增状态：批量设置模式 - 支持分:秒格式
@@ -901,15 +935,27 @@ export default function SkipController({
 
   // 快捷跳过预设 - 添加预设
   const handleAddPreset = useCallback(() => {
-    const name = newPresetName.trim();
+    const name = newPresetName.trim().slice(0, 30);
     const dur = timeToSeconds(newPresetDuration);
-    if (!name || dur <= 0) return;
+    if (!name || dur <= 0) {
+      setPresetFeedback('请输入有效的名称和时长');
+      return;
+    }
+    if (quickSkipPresets.length >= MAX_PRESET_COUNT) {
+      setPresetFeedback(`最多只能添加 ${MAX_PRESET_COUNT} 个预设`);
+      return;
+    }
+    if (quickSkipPresets.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+      setPresetFeedback('预设名称已存在');
+      return;
+    }
     const preset: QuickSkipPreset = { id: Date.now().toString(), name, duration: dur };
     const updated = [...quickSkipPresets, preset];
     setQuickSkipPresets(updated);
     saveQuickSkipPresetsToStorage(updated);
     setNewPresetName('');
     setNewPresetDuration('');
+    setPresetFeedback(`已添加预设「${name}」`);
   }, [newPresetName, newPresetDuration, quickSkipPresets, timeToSeconds]);
 
   // 快捷跳过预设 - 删除预设
@@ -943,6 +989,74 @@ export default function SkipController({
       artPlayerRef.current.notice.show = `${preset.name}: 跳过 ${secondsToTime(preset.duration)}`;
     }
   }, [artPlayerRef, secondsToTime]);
+
+  // 快捷跳过预设 - 导出
+  const handleExportPresets = useCallback(() => {
+    if (quickSkipPresets.length === 0) {
+      setPresetFeedback('没有预设可导出');
+      return;
+    }
+    const payload = JSON.stringify(quickSkipPresets, null, 2);
+    const blob = new Blob([payload], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `lunatv-skip-presets-${date}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setPresetFeedback('预设已导出');
+  }, [quickSkipPresets]);
+
+  // 快捷跳过预设 - 导入（选择文件后触发）
+  const handleImportPresets: ChangeEventHandler<HTMLInputElement> = useCallback((event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    file.text().then(text => {
+      try {
+        const parsed = JSON.parse(text);
+        if (!Array.isArray(parsed)) {
+          setPresetFeedback('导入失败：文件格式无效');
+          return;
+        }
+        const imported = sanitizePresetList(parsed);
+        if (imported.length === 0) {
+          setPresetFeedback('导入失败：未识别到有效预设');
+          return;
+        }
+        setPendingImportedPresets(imported);
+        setIsImportDialogOpen(true);
+      } catch {
+        setPresetFeedback('导入失败：文件内容无法解析');
+      }
+    });
+    event.target.value = '';
+  }, []);
+
+  // 快捷跳过预设 - 确认导入
+  const handleConfirmImport = useCallback((mode: 'merge' | 'overwrite') => {
+    const byName = (name: string) => name.trim().toLowerCase();
+
+    const finalPresets = mode === 'overwrite'
+      ? sanitizePresetList(pendingImportedPresets)
+      : sanitizePresetList([
+          ...pendingImportedPresets,
+          ...quickSkipPresets.filter(local =>
+            !pendingImportedPresets.some(
+              imp => imp.id === local.id || byName(imp.name) === byName(local.name),
+            ),
+          ),
+        ]);
+
+    setQuickSkipPresets(finalPresets);
+    saveQuickSkipPresetsToStorage(finalPresets);
+    setPresetFeedback(`已导入 ${pendingImportedPresets.length} 条预设`);
+    setPendingImportedPresets([]);
+    setIsImportDialogOpen(false);
+  }, [pendingImportedPresets, quickSkipPresets]);
 
   return (
     <div className="skip-controller">
@@ -1298,6 +1412,115 @@ export default function SkipController({
                 </button>
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">时长格式: 1:30 (1分30秒) 或 90 (90秒)，播放时会显示在播放器底部</p>
+
+              {/* 导入/导出 + 预设计数 */}
+              <input
+                ref={importInputRef}
+                type="file"
+                accept="application/json"
+                className="hidden"
+                onChange={handleImportPresets}
+              />
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                <button
+                  onClick={handleExportPresets}
+                  disabled={quickSkipPresets.length === 0}
+                  className="px-3 py-1.5 rounded-lg border border-cyan-300 dark:border-cyan-600 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-100 dark:hover:bg-cyan-900/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-xs font-medium"
+                >
+                  导出预设
+                </button>
+                <button
+                  onClick={() => importInputRef.current?.click()}
+                  className="px-3 py-1.5 rounded-lg border border-cyan-300 dark:border-cyan-600 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-100 dark:hover:bg-cyan-900/30 transition-colors text-xs font-medium"
+                >
+                  导入预设
+                </button>
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {quickSkipPresets.length}/{MAX_PRESET_COUNT}
+                </span>
+                {presetFeedback && (
+                  <span className="text-xs text-emerald-600 dark:text-emerald-400">
+                    {presetFeedback}
+                  </span>
+                )}
+              </div>
+
+              {/* 导入确认对话框 */}
+              {isImportDialogOpen && (
+                <div className="mt-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white/90 dark:bg-gray-900/70 p-3">
+                  {(() => {
+                    const byName = (name: string) => name.trim().toLowerCase();
+                    const overwriteCount = pendingImportedPresets.filter(imp =>
+                      quickSkipPresets.some(
+                        local => local.id === imp.id || byName(local.name) === byName(imp.name),
+                      ),
+                    ).length;
+                    const addCount = pendingImportedPresets.length - overwriteCount;
+                    const conflictNames = Array.from(new Set(
+                      quickSkipPresets
+                        .filter(local => pendingImportedPresets.some(
+                          imp => local.id === imp.id || byName(local.name) === byName(imp.name),
+                        ))
+                        .map(item => item.name),
+                    ));
+                    const conflictPreview = conflictNames.slice(0, 10);
+                    const hiddenCount = Math.max(conflictNames.length - conflictPreview.length, 0);
+
+                    return (
+                      <>
+                        <div className="text-sm text-gray-800 dark:text-gray-200 mb-2">
+                          检测到 {pendingImportedPresets.length} 条可导入预设
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-300 mb-3">
+                          将覆盖 {overwriteCount} 条，新增 {addCount} 条
+                        </div>
+                        {conflictPreview.length > 0 && (
+                          <div className="mb-3 rounded-md border border-amber-200 bg-amber-50/70 p-2 dark:border-amber-700/60 dark:bg-amber-900/20">
+                            <div className="mb-1 text-xs text-amber-800 dark:text-amber-300">
+                              冲突预设（前 10 条）：
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {conflictPreview.map(name => (
+                                <span
+                                  key={name}
+                                  className="rounded-full border border-amber-300 bg-white/80 px-2 py-0.5 text-xs text-amber-900 dark:border-amber-600 dark:bg-amber-900/40 dark:text-amber-200"
+                                >
+                                  {name}
+                                </span>
+                              ))}
+                              {hiddenCount > 0 && (
+                                <span className="rounded-full border border-amber-300 bg-white/80 px-2 py-0.5 text-xs text-amber-900 dark:border-amber-600 dark:bg-amber-900/40 dark:text-amber-200">
+                                  还有 {hiddenCount} 条
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => handleConfirmImport('merge')}
+                      className="px-3 py-1.5 rounded-lg bg-cyan-600 text-white hover:bg-cyan-700 transition-colors text-xs font-medium"
+                    >
+                      合并导入
+                    </button>
+                    <button
+                      onClick={() => handleConfirmImport('overwrite')}
+                      className="px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors text-xs font-medium"
+                    >
+                      覆盖现有
+                    </button>
+                    <button
+                      onClick={() => { setPendingImportedPresets([]); setIsImportDialogOpen(false); }}
+                      className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-xs font-medium"
+                    >
+                      取消
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 传统单个设置模式 */}
