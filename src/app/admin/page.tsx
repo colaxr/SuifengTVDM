@@ -7230,7 +7230,7 @@ const LiveSourceConfig = ({
       />
 
       {/* M3U 导入模态框 */}
-      {showM3UImportForm && (
+      {showM3UImportForm && createPortal(
         <div className='fixed inset-0 bg-black/60 backdrop-blur-sm z-9999 flex items-center justify-center p-4'>
           <div className='bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden'>
             <div className='relative px-5 py-4 bg-gradient-to-r from-blue-600 to-cyan-600'>
@@ -7257,7 +7257,8 @@ const LiveSourceConfig = ({
               onCancel={() => setShowM3UImportForm(false)}
             />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 导入模态框 */}
