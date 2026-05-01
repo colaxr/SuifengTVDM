@@ -4832,8 +4832,12 @@ function PlayPageClient() {
 
                     // 🎯 动态弹幕密度控制 - 根据当前屏幕上的弹幕数量决定是否显示
                     const currentVisibleCount = document.querySelectorAll('.art-danmuku [data-state="emit"]').length;
-                    const maxConcurrentDanmu = devicePerformance === 'high' ? 60 :
-                                             devicePerformance === 'medium' ? 40 : 25;
+
+                    // 🎯 全屏时降低弹幕密度，避免控制栏卡顿
+                    const isFullscreen = artPlayerRef.current?.fullscreen;
+                    const maxConcurrentDanmu = isFullscreen
+                      ? (devicePerformance === 'high' ? 40 : devicePerformance === 'medium' ? 25 : 15)
+                      : (devicePerformance === 'high' ? 60 : devicePerformance === 'medium' ? 40 : 25);
 
                     if (currentVisibleCount >= maxConcurrentDanmu) {
                       // 🔥 当弹幕密度过高时，随机丢弃部分弹幕，保持流畅性
