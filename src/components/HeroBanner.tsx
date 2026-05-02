@@ -49,6 +49,8 @@ function HeroBanner({
   const [isMuted, setIsMuted] = useState(true);
   const [videoLoaded, setVideoLoaded] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const isMountedRef = useRef(true);
+  const transitionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // 🚀 TanStack Query - 刷新后的trailer URL缓存
   // 替换 useState + localStorage 手动管理
@@ -100,27 +102,60 @@ function HeroBanner({
 
   // 导航函数
   const handleNext = useCallback(() => {
-    if (isTransitioning) return;
+    if (isTransitioning || !isMountedRef.current) return;
     setIsTransitioning(true);
     setVideoLoaded(false); // 重置视频加载状态
     setCurrentIndex((prev) => (prev + 1) % items.length);
-    setTimeout(() => setIsTransitioning(false), 800); // Netflix风格：更慢的过渡
+
+    // 清除之前的timeout
+    if (transitionTimeoutRef.current) {
+      clearTimeout(transitionTimeoutRef.current);
+    }
+
+    // 设置新的timeout
+    transitionTimeoutRef.current = setTimeout(() => {
+      if (isMountedRef.current) {
+        setIsTransitioning(false);
+      }
+    }, 800); // Netflix风格：更慢的过渡
   }, [isTransitioning, items.length]);
 
   const handlePrev = useCallback(() => {
-    if (isTransitioning) return;
+    if (isTransitioning || !isMountedRef.current) return;
     setIsTransitioning(true);
     setVideoLoaded(false); // 重置视频加载状态
     setCurrentIndex((prev) => (prev - 1 + items.length) % items.length);
-    setTimeout(() => setIsTransitioning(false), 800);
+
+    // 清除之前的timeout
+    if (transitionTimeoutRef.current) {
+      clearTimeout(transitionTimeoutRef.current);
+    }
+
+    // 设置新的timeout
+    transitionTimeoutRef.current = setTimeout(() => {
+      if (isMountedRef.current) {
+        setIsTransitioning(false);
+      }
+    }, 800);
   }, [isTransitioning, items.length]);
 
   const handleIndicatorClick = (index: number) => {
-    if (isTransitioning || index === currentIndex) return;
+    if (isTransitioning || index === currentIndex || !isMountedRef.current) return;
     setIsTransitioning(true);
     setVideoLoaded(false); // 重置视频加载状态
     setCurrentIndex(index);
-    setTimeout(() => setIsTransitioning(false), 800);
+
+    // 清除之前的timeout
+    if (transitionTimeoutRef.current) {
+      clearTimeout(transitionTimeoutRef.current);
+    }
+
+    // 设置新的timeout
+    transitionTimeoutRef.current = setTimeout(() => {
+      if (isMountedRef.current) {
+        setIsTransitioning(false);
+      }
+    }, 800);
   };
 
   const toggleMute = () => {
@@ -187,20 +222,49 @@ function HeroBanner({
       return;
     }
 
+    let isMounted = true;
+
     const checkAndRefreshMissingTrailers = async () => {
       for (const item of items) {
+        // 检查组件是否仍然挂载
+        if (!isMounted) break;
+
         // 如果有 douban_id 但没有 trailerUrl，尝试获取
         if (item.douban_id && !item.trailerUrl && !refreshedTrailerUrls[item.douban_id]) {
           console.log('[HeroBanner] 检测到缺失的 trailer，尝试获取:', item.title);
-          await refreshTrailerUrl(item.douban_id);
+          try {
+            await refreshTrailerUrl(item.douban_id);
+          } catch (error) {
+            // 忽略错误，继续处理下一个
+            console.warn('[HeroBanner] 获取 trailer 失败:', error);
+          }
         }
       }
     };
 
     // 延迟执行，避免阻塞初始渲染
-    const timer = setTimeout(checkAndRefreshMissingTrailers, 1000);
-    return () => clearTimeout(timer);
+    const timer = setTimeout(() => {
+      if (isMounted) {
+        checkAndRefreshMissingTrailers();
+      }
+    }, 1000);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
   }, [items, refreshedTrailerUrls, refreshTrailerUrl, enableVideo]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      // 清理所有pending的timeouts
+      if (transitionTimeoutRef.current) {
+        clearTimeout(transitionTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div
@@ -252,6 +316,8 @@ function HeroBanner({
                   playsInline
                   preload="metadata"
                   onError={async (e) => {
+                    if (!isMountedRef.current) return;
+
                     const video = e.currentTarget;
                     console.error('[HeroBanner] 视频加载失败:', {
                       title: item.title,
@@ -261,27 +327,38 @@ function HeroBanner({
 
                     // 检测是否是403错误（trailer URL过期）
                     if (item.douban_id) {
-                      // 如果缓存中有URL，说明之前刷新过，但现在又失败了
-                      // 需要清除缓存中的旧URL，重新刷新
-                      if (refreshedTrailerUrls[item.douban_id]) {
-                        clearTrailerMutation.mutate({ doubanId: item.douban_id });
-                      }
+                      try {
+                        // 如果缓存中有URL，说明之前刷新过，但现在又失败了
+                        // 需要清除缓存中的旧URL，重新刷新
+                        if (refreshedTrailerUrls[item.douban_id]) {
+                          clearTrailerMutation.mutate({ doubanId: item.douban_id });
+                        }
 
-                      // 重新刷新URL
-                      const newUrl = await refreshTrailerUrl(item.douban_id);
-                      if (newUrl) {
-                        // 重新加载视频
-                        video.load();
+                        // 重新刷新URL
+                        const newUrl = await refreshTrailerUrl(item.douban_id);
+                        if (newUrl && isMountedRef.current) {
+                          // 重新加载视频
+                          video.load();
+                        }
+                      } catch (error) {
+                        // 静默处理错误，避免页面崩溃
+                        console.warn('[HeroBanner] 刷新trailer URL失败，将继续显示背景图片:', error);
                       }
                     }
                   }}
                   onLoadedData={(e) => {
+                    if (!isMountedRef.current) return;
+
                     console.log('[HeroBanner] 视频加载成功:', item.title);
-                    setVideoLoaded(true); // 视频加载完成，淡入显示
+                    if (isMountedRef.current) {
+                      setVideoLoaded(true); // 视频加载完成，淡入显示
+                    }
                     // 确保视频开始播放
                     const video = e.currentTarget;
                     video.play().catch((error) => {
-                      console.error('[HeroBanner] 视频自动播放失败:', error);
+                      if (isMountedRef.current) {
+                        console.error('[HeroBanner] 视频自动播放失败:', error);
+                      }
                     });
                   }}
                 >
